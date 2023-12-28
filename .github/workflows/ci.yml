@@ -1,0 +1,8 @@
+name: gymC
+on: push
+jobs:
+        compile:
+                runs-on: ubuntu-latest
+                steps:
+                        - name: step0
+                          run: echo "Everything OK!"
