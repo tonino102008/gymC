@@ -2,3 +2,4 @@ gymC
 cards
 holdem
 .vscode/
+*.o
