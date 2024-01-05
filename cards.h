@@ -14,7 +14,6 @@ typedef enum {
 } Suit;
 
 typedef enum {
-    ACE,
     TWO,
     THREE,
     FOUR,
@@ -27,6 +26,7 @@ typedef enum {
     JACK,
     QUEEN,
     KING,
+    ACE,
 } Value;
 
 typedef struct {
@@ -43,6 +43,9 @@ typedef struct {
 
 void deck_make_impl(void* deck);
 void deck_shuffle_impl(void* deck);
+int sort_cards_value_impl(const void* ptr1, const void* ptr2);
+int sort_cards_suit_impl(const void* ptr1, const void* ptr2);
 char* print_card_impl(Card* card);
+char* print_cards_impl(Card* cards, size_t no_cards);
 
 #endif // CARDS_H_

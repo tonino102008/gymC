@@ -15,6 +15,13 @@
 
 #define NO_PLAYERS 2
 
+#define SET_POINT(test, player, point_val)  \
+        ({if (test) {                       \
+            player.point = point_val;       \
+            free(test);                     \
+            continue;                       \
+        }})
+
 typedef enum {
     PRE_FLOP,
     FLOP,
@@ -23,8 +30,7 @@ typedef enum {
 } GamePhase;
 
 typedef enum {
-    FOLD,
-    CHECK,
+    FOLD_CHECK,
     CALL,
     RAISE,
 } Bet;
@@ -47,6 +53,9 @@ typedef struct {
     size_t fiches;
     size_t is_bblind;
     size_t is_sblind;
+    size_t cur_bet;
+    Bet bet;
+    Point point;
 } Player;
 
 typedef struct {
@@ -59,6 +68,7 @@ typedef struct {
 
 typedef struct {
     size_t num_players;
+    size_t* act_players;
     Deck* deck;
     Player* players;
     GamePhase phase;
@@ -85,5 +95,17 @@ void river_impl(void* game);
 void check_point_impl(void* game);
 void bet_round_impl(void* game);
 void collect_cards_impl(void* game);
+
+Card* check_flush_impl(Card* cards, size_t no_cards);
+Card* ret_flush_impl(Card* cards, size_t no_cards, Suit suit);
+Card* check_straight_impl(Card* cards, size_t no_cards);
+Card* ret_straight_impl(Card* cards, size_t no_cards, size_t idx);
+Card* check_poker_impl(Card* cards, size_t no_cards);
+Card* ret_poker_impl(Card* cards, size_t no_cards, size_t idx);
+Card* check_tris_impl(Card* cards, size_t no_cards);
+Card* ret_tris_impl(Card* cards, size_t no_cards, size_t idx);
+Card* check_pair_impl(Card* cards, size_t no_cards);
+Card* ret_pair_impl(Card* cards, size_t no_cards, size_t idx);
+Card* check_high_card_impl(Card* cards, size_t no_cards);
 
 #endif // HOLDEM_H_
