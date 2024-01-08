@@ -13,14 +13,26 @@
 #define NO_BBLIND 20
 #define NO_SBLIND 10
 
-#define NO_PLAYERS 2
+#define NO_PLAYERS 9
 
-#define SET_POINT(test, player, point_val)  \
-        ({if (test) {                       \
-            player.point = point_val;       \
-            free(test);                     \
-            continue;                       \
-        }})
+#define SET_PHASE(phase, num)                           \
+        ({switch (phase) {                              \
+            case PRE_FLOP:                              \
+                num = 0;                                \
+                break;                                  \
+                                                        \
+            case FLOP:                                  \
+                num = NO_CARDS_FLOP;                    \
+                break;                                  \
+                                                        \
+            case TURN:                                  \
+                num = NO_CARDS_FLOP + NO_CARDS_TURN;    \
+                break;                                  \
+                                                        \
+            case RIVER:                                 \
+                num = NO_CARDS_TABLE;                   \
+                break;                                  \
+            }})
 
 typedef enum {
     PRE_FLOP,
@@ -49,7 +61,14 @@ typedef enum {
 } Point;
 
 typedef struct {
+    size_t* idx;
+    size_t dim;
+    Value value;
+} Counter;
+
+typedef struct {
     Card* cards;
+    Card* best_hand;
     size_t fiches;
     size_t is_bblind;
     size_t is_sblind;
@@ -85,6 +104,9 @@ typedef struct {
     void (*collect_cards)(void*);
 } Game;
 
+int sort_counter_impl(const void* ptr1, const void* ptr2);
+int sort_counter_by_value_impl(const void* ptr1, const void* ptr2);
+
 void start_game_impl(void* game);
 void reset_hand_impl(void* game);
 void move_blinds_impl(void* game);
@@ -96,16 +118,13 @@ void check_point_impl(void* game);
 void bet_round_impl(void* game);
 void collect_cards_impl(void* game);
 
-Card* check_flush_impl(Card* cards, size_t no_cards);
-Card* ret_flush_impl(Card* cards, size_t no_cards, Suit suit);
-Card* check_straight_impl(Card* cards, size_t no_cards);
-Card* ret_straight_impl(Card* cards, size_t no_cards, size_t idx);
-Card* check_poker_impl(Card* cards, size_t no_cards);
-Card* ret_poker_impl(Card* cards, size_t no_cards, size_t idx);
-Card* check_tris_impl(Card* cards, size_t no_cards);
-Card* ret_tris_impl(Card* cards, size_t no_cards, size_t idx);
-Card* check_pair_impl(Card* cards, size_t no_cards);
-Card* ret_pair_impl(Card* cards, size_t no_cards, size_t idx);
-Card* check_high_card_impl(Card* cards, size_t no_cards);
+size_t check_flush_straight_impl(Counter* count, Card* all, Card* straight);
+size_t check_straight_impl(Counter* count, Card* all, Card* straight);
+
+Card* check_counter_impl(Player* pl, Counter* count, Counter* count_s, Card* all);
+
+size_t compare_best_hands_impl(Card* cur_best, Card* new);
+
+void print_table_impl(void* game);
 
 #endif // HOLDEM_H_

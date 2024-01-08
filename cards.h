@@ -4,7 +4,9 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
+
+extern const char* SuitNames[];
+extern const char* ValueNames[];
 
 typedef enum {
     CLUBS,

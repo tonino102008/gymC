@@ -8,6 +8,10 @@
 #include <string.h>
 #include <errno.h>
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 #define FOR_ARRAY(dim, body)                    \
         do {                                    \
             for (size_t i = 0; i < dim; i++) {  \
@@ -68,7 +72,9 @@ typedef struct {
 void startEpisode(Environment* env);
 
 void vlog(FILE* stream, const char* tag, const char* fmt, va_list args);
+void vlog2(FILE* stream, const char* tag, const char* fmt, va_list args);
 void INFO(const char* fmt, ...);
+void INFO2(const char* fmt, ...);
 void WARN(const char* fmt, ...);
 void ERRO(const char* fmt, ...);
 void PANIC(const char* fmt, ...);
@@ -91,10 +97,22 @@ void vlog(FILE* stream, const char* tag, const char* fmt, va_list args) {
     fprintf(stream, "\n");
 };
 
+void vlog2(FILE* stream, const char* tag, const char* fmt, va_list args) {
+    fprintf(stream, "[%s] ", tag);
+    vfprintf(stream, fmt, args);
+};
+
 void INFO(const char* fmt, ...) {
     va_list args;
     va_start(args,fmt);
     vlog(stdout, "INFO", fmt, args);
+    va_end(args);
+};
+
+void INFO2(const char* fmt, ...) {
+    va_list args;
+    va_start(args,fmt);
+    vlog2(stdout, "INFO", fmt, args);
     va_end(args);
 };
 

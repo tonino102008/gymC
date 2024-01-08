@@ -21,7 +21,6 @@ void deck_make_impl(void* deck) {
 
 void deck_shuffle_impl(void* deck) {
     assert(((Deck*)deck)->dim > 0);
-    srand(time(NULL));
     FOR_ARRAY(((Deck*)deck)->dim, {
         int from = rand() % ((Deck*)deck)->dim;
         int to = rand() % ((Deck*)deck)->dim;
@@ -56,6 +55,7 @@ char* print_card_impl(Card* card) {
 }
 
 char* print_cards_impl(Card* cards, size_t no_cards) {
+    if (no_cards == 0) return "-- -- -- -- -- ";
     char* tmp = print_card_impl(&cards[0]);
     size_t dim = strlen(tmp) + 2;
     char* out = malloc(dim * sizeof(char));

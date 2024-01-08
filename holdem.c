@@ -3,6 +3,22 @@
 #include "./gymC.h"
 #include "./holdem.h"
 
+int sort_counter_impl(const void* ptr1, const void* ptr2) {
+    Counter* c1 = (Counter*)ptr1;
+    Counter* c2 = (Counter*)ptr2;
+    int biggest = 0;
+    if (c1->dim > c2->dim) biggest = 1;
+    return biggest;
+}
+
+int sort_counter_by_value_impl(const void* ptr1, const void* ptr2) {
+    Counter* c1 = (Counter*)ptr1;
+    Counter* c2 = (Counter*)ptr2;
+    int biggest = 0;
+    if (c1->value > c2->value) biggest = 1;
+    return biggest;
+}
+
 void start_game_impl(void* game) {
     ((Game*)game)->deck = malloc(sizeof(Deck));
     ((Game*)game)->deck->deck_make = &deck_make_impl;
@@ -12,6 +28,7 @@ void start_game_impl(void* game) {
     ((Game*)game)->players = malloc(sizeof(Player) * ((Game*)game)->num_players);
     FOR_ARRAY(((Game*)game)->num_players, {
         ((Game*)game)->players[i].cards = malloc(sizeof(Card) * NO_CARDS_HAND);
+        ((Game*)game)->players[i].best_hand = malloc(sizeof(Card) * NO_CARDS_TABLE);
         ((Game*)game)->players[i].fiches = NO_FICHES;
         ((Game*)game)->players[i].is_bblind = 0;
         ((Game*)game)->players[i].is_sblind = 0;
@@ -75,8 +92,10 @@ void deal_cards_impl(void* game) {
 }
 
 void check_point_impl(void* game) {
-    Point max_point = HIGH_CARD;
-    size_t winner = -1;
+    Counter* winners = malloc(sizeof(Counter));
+    winners->dim = 0;
+    winners->idx = malloc(1 * sizeof(size_t));
+    winners->value = HIGH_CARD;
     Card* all = malloc(sizeof(Card) * (NO_CARDS_TABLE + NO_CARDS_HAND));
     FOR_ARRAY(((Game*)game)->num_players, {
         // THE CYCLE DEPENDS FROM THE DEALER POSITION
@@ -86,24 +105,81 @@ void check_point_impl(void* game) {
         memcpy(&all[NO_CARDS_TABLE], ((Game*)game)->players[i].cards, sizeof(Card) * NO_CARDS_HAND);
         qsort(all, NO_CARDS_TABLE + NO_CARDS_HAND, sizeof(Card), sort_cards_value_impl);
 
-        INFO("--------------------");
-        INFO("Sorted Table: %s", print_cards_impl(all, NO_CARDS_TABLE + NO_CARDS_HAND));
-        
-        Card* test = check_poker_impl(all, NO_CARDS_TABLE + NO_CARDS_HAND);
-        SET_POINT(test, ((Game*)game)->players[i], POKER);
-        test = check_flush_impl(all, NO_CARDS_TABLE + NO_CARDS_HAND);
-        SET_POINT(test, ((Game*)game)->players[i], FLUSH);
-        test = check_straight_impl(all, NO_CARDS_TABLE + NO_CARDS_HAND);
-        SET_POINT(test, ((Game*)game)->players[i], SIMPLE_STRAIGHT);
-        test = check_tris_impl(all, NO_CARDS_TABLE + NO_CARDS_HAND);
-        SET_POINT(test, ((Game*)game)->players[i], TRIS);
-        test = check_pair_impl(all, NO_CARDS_TABLE + NO_CARDS_HAND);
-        SET_POINT(test, ((Game*)game)->players[i], ONE_PAIR);
-        test = check_high_card_impl(all, NO_CARDS_TABLE + NO_CARDS_HAND);
-        SET_POINT(test, ((Game*)game)->players[i], HIGH_CARD);
+        Counter* count = malloc((ACE + 1) * sizeof(Counter));
+        Counter* count_s = malloc((SPADES + 1) * sizeof(Counter));
+        FOR_ARRAY(ACE + 1, {
+            count[i].dim = 0;
+            count[i].idx = malloc(1 * sizeof(size_t));
+            count[i].value = i;
+        });
+        FOR_ARRAY(SPADES + 1, {
+            count_s[i].dim = 0;
+            count_s[i].idx = malloc(1 * sizeof(size_t));
+            count_s[i].value = i;
+        });
+        FOR_ARRAY(NO_CARDS_TABLE + NO_CARDS_HAND, {
+            count[all[i].value].dim += 1;
+            count[all[i].value].idx = realloc(count[all[i].value].idx, count[all[i].value].dim * sizeof(size_t));
+            count[all[i].value].idx[count[all[i].value].dim - 1] = i;
+
+            count_s[all[i].suit].dim += 1;
+            count_s[all[i].suit].idx = realloc(count_s[all[i].suit].idx, count_s[all[i].suit].dim * sizeof(size_t));
+            count_s[all[i].suit].idx[count_s[all[i].suit].dim - 1] = i;
+        });
+        qsort(count, ACE + 1, sizeof(Counter), sort_counter_impl);
+        qsort(count_s, SPADES + 1, sizeof(Counter), sort_counter_impl);
+        ((Game*)game)->players[i].best_hand = check_counter_impl(&((Game*)game)->players[i], count, count_s, all);
+        FOR_ARRAY(SPADES + 1, {
+            free(count_s[i].idx);
+        });
+        FOR_ARRAY(ACE + 1, {
+            free(count[i].idx);
+        });
+        free(count_s);
+        free(count);
+
+        if (((Game*)game)->players[i].point == winners->value) {
+            if (winners->dim > 0) {
+                size_t best = compare_best_hands_impl(((Game*)game)->players[winners->idx[0]].best_hand,
+                            ((Game*)game)->players[i].best_hand);
+                switch (best)
+                {
+                    case 0:
+                        break;
+                    
+                    case 1:
+                        winners->dim = 1;
+                        winners->idx = realloc(winners->idx, winners->dim * sizeof(size_t));
+                        winners->idx[winners->dim - 1] = i;
+                        winners->value = ((Game*)game)->players[i].point;
+                        break;
+
+                    case 2:
+                        winners->dim += 1;
+                        winners->idx = realloc(winners->idx, winners->dim * sizeof(size_t));
+                        winners->idx[winners->dim - 1] = i;
+                        winners->value = ((Game*)game)->players[i].point;
+                        break;
+                }
+            } else {
+                winners->dim = 1;
+                winners->idx = realloc(winners->idx, winners->dim * sizeof(size_t));
+                winners->idx[winners->dim - 1] = i;
+                winners->value = ((Game*)game)->players[i].point;
+            }
+        }
+        if (((Game*)game)->players[i].point > winners->value) {
+            winners->dim = 1;
+            winners->idx = realloc(winners->idx, winners->dim * sizeof(size_t));
+            winners->idx[winners->dim - 1] = i;
+            winners->value = ((Game*)game)->players[i].point;
+        }
 
     });
-    ((Game*)game)->players[winner].fiches += ((Game*)game)->table->plate;
+    FOR_ARRAY(winners->dim, {
+        ((Game*)game)->players[winners->idx[i]].fiches += (((Game*)game)->table->plate / (winners->dim));
+    });
+    free(winners);
 }
 
 void bet_round_impl(void* game) {
@@ -208,147 +284,211 @@ void collect_cards_impl(void* game) {
     }
 }
 
-Card* check_flush_impl(Card* cards, size_t no_cards) {
-    size_t no_fl = 0;
-    Card* cards_t = malloc(no_cards * sizeof(Card));
-    memcpy(cards_t, cards, no_cards * sizeof(Card));
-    qsort(cards_t, no_cards, sizeof(Card), sort_cards_suit_impl);
-    FOR_ARRAY(no_cards, {
-        if ((cards_t[i - 1].suit != cards_t[i].suit) && (i > 0)) no_fl = 0;
-        no_fl += 1;
-        if (no_fl == 5) return ret_flush_impl(cards_t, no_cards, cards_t[i].suit);
+size_t check_flush_straight_impl(Counter* count, Card* all, Card* straight) {
+    size_t is_straight = 0;
+    size_t j = ACE;
+    Card* tmp = malloc(count->dim * sizeof(Card));
+    FOR_ARRAY(count->dim, {
+        memcpy(&tmp[i], &all[count->idx[i]], sizeof(Card));
     });
-    return NULL;
+    Counter* count2 = malloc((ACE + 1) * sizeof(Counter));
+    FOR_ARRAY(ACE + 1, {
+        count2[i].dim = 0;
+        count2[i].idx = malloc(1 * sizeof(size_t));
+        count2[i].value = i;
+    });
+    FOR_ARRAY(count->dim, {
+        count2[tmp[i].value].dim += 1;
+        count2[tmp[i].value].idx = realloc(count2[tmp[i].value].idx, count2[tmp[i].value].dim * sizeof(size_t));
+        count2[tmp[i].value].idx[count2[tmp[i].value].dim - 1] = i;
+    });
+    FOR_ARRAY(ACE + 1, {
+        if (count2[j].dim) {
+            memcpy(&straight[is_straight], &tmp[count2[j].idx[0]], sizeof(Card));
+            is_straight += 1;
+        } else {
+            is_straight = 0;
+        }
+        if (is_straight == 5) break;
+        j -= 1;
+    });
+    if (straight[0].value == ACE && is_straight == 5) is_straight += 1;
+    if (is_straight == 4 && count2[ACE].dim) {
+        memcpy(&straight[is_straight], &tmp[count2[ACE].idx[0]], sizeof(Card));
+        is_straight += 1;
+    }
+    free(count2);
+    free(tmp);
+    return is_straight;
 }
 
-Card* ret_flush_impl(Card* cards, size_t no_cards, Suit suit) {
-    Card* out = malloc((NO_CARDS_TABLE + NO_CARDS_HAND) * sizeof(Card));
-    qsort(cards, no_cards, sizeof(Card), sort_cards_value_impl);
-    size_t j = 0;
-    FOR_ARRAY(no_cards, {
-        if (cards[i].suit == suit) {
-            memcpy(&out[j], &cards[i], sizeof(Card));
-            j += 1;
+size_t check_straight_impl(Counter* count, Card* all, Card* straight) {
+    size_t is_straight = 0;
+    size_t j = ACE;
+    Counter* count2 = malloc((ACE + 1) * sizeof(Counter));
+    memcpy(count2, count, (ACE + 1) * sizeof(Counter));
+    qsort(count2, ACE + 1, sizeof(Counter), sort_counter_by_value_impl);
+    FOR_ARRAY(ACE + 1, {
+        if (count2[j].dim) {
+            memcpy(&straight[is_straight], &all[count2[j].idx[0]], sizeof(Card));
+            is_straight += 1;
+        } else {
+            is_straight = 0;
+        }
+        if (is_straight == 5) break;
+        j -= 1;
+    });
+    if (is_straight == 4 && count2[ACE].dim) {
+        memcpy(&straight[is_straight], &all[count2[ACE].idx[0]], sizeof(Card));
+        is_straight += 1;
+    }
+    free(count2);
+    return is_straight;
+}
+
+Card* check_counter_impl(Player* pl, Counter* count, Counter* count_s, Card* all) {
+    Card* out = malloc(NO_CARDS_TABLE * sizeof(Card));
+    Card* straight = malloc(NO_CARDS_TABLE * sizeof(Card));
+    size_t j = ACE;
+    size_t n = 0;
+    Card* last = NULL;
+    FOR_ARRAY(NO_CARDS_TABLE, {
+        if (n < count[j].dim) {
+            memcpy(&out[i], &all[count[j].idx[n]], sizeof(Card));
+            n += 1;
+        } else {
+            n = 0;
+            j -= 1;
+            memcpy(&out[i], &all[count[j].idx[n]], sizeof(Card));
+            n += 1;
         }
     });
-    out = realloc(out, NO_CARDS_TABLE * sizeof(Card));
-    INFO("Flush: %s", print_cards_impl(out, NO_CARDS_TABLE));
+    FOR_ARRAY(ACE + 1, {
+        if (count[ACE - i].dim == 1) {
+            last = malloc(sizeof(Card));
+            memcpy(last, &all[count[ACE - i].idx[0]], sizeof(Card));
+            break;
+        }
+    });
+    j = ACE;
+    if (count_s[SPADES].dim >= 5 && check_flush_straight_impl(&count_s[SPADES], all, straight) == 6) {
+        pl->point = ROYAL_STRAIGHT;
+        return straight;
+    }
+    if (count_s[SPADES].dim >= 5 && check_flush_straight_impl(&count_s[SPADES], all, straight) == 5) {
+        pl->point = FLUSH_STRAIGHT;
+        return straight;
+    }
+    if (count[j].dim == 4) {
+        pl->point = POKER;
+        if (last && last->value > out[NO_CARDS_TABLE - 1].value) memcpy(&out[NO_CARDS_TABLE - 1], last, sizeof(Card));
+        free(last);
+        return out;
+    }
+    if (count[j].dim == 3 && count[j - 1].dim >= 2) {
+        pl->point = FULL_HOUSE;
+        return out;
+    }
+    if (count_s[SPADES].dim >= 5) {
+        pl->point = FLUSH;
+        FOR_ARRAY(NO_CARDS_TABLE, {
+            memcpy(&out[i], &all[count_s[SPADES].idx[i]], sizeof(Card));
+        });
+        free(last);
+        return out;
+    }
+    if (check_straight_impl(count, all, straight) == 5) {
+        pl->point = SIMPLE_STRAIGHT;
+        return straight;
+    }
+    if (count[j].dim == 3) {
+        pl->point = TRIS;
+        return out;
+    }
+    if (count[j].dim == 2 && count[j - 1].dim == 2) {
+        pl->point = TWO_PAIR;
+        if (last && last->value > out[NO_CARDS_TABLE - 1].value) memcpy(&out[NO_CARDS_TABLE - 1], last, sizeof(Card));
+        return out;
+    }
+    if (count[j].dim == 2) {
+        pl->point = ONE_PAIR;
+        return out;
+    }
+    pl->point = HIGH_CARD;
     return out;
 }
 
-Card* check_straight_impl(Card* cards, size_t no_cards) {
-    // CHECK STRAIGHT DETECTION
-    size_t no_s = 0;
-    FOR_ARRAY(no_cards, {
-        if ((cards[i - 1].value == cards[i].value) && (i > 0)) continue;
-        if (no_s == 4 && cards[0].value == ACE) return ret_straight_impl(cards, no_cards, no_cards - no_s);
-        if ((cards[i - 1].value != (cards[i].value + 1)) && (i > 0)) no_s = 0;
-        no_s += 1;
-        if (no_s == 5) return ret_straight_impl(cards, no_cards, i - no_s);
-    });
-    if (no_s == 4 && cards[0].value == ACE) return ret_straight_impl(cards, no_cards, no_cards - no_s);
-    return NULL;
-}
-
-Card* ret_straight_impl(Card* cards, size_t no_cards, size_t idx) {
-    // CHECK CORNER CASES 
-    Card* out = malloc(NO_CARDS_TABLE * sizeof(Card));
+size_t compare_best_hands_impl(Card* cur_best, Card* new) {
     FOR_ARRAY(NO_CARDS_TABLE, {
-        memcpy(&out[i], &cards[(i + idx) % (NO_CARDS_TABLE + NO_CARDS_HAND)], sizeof(Card));
+        if (cur_best[i].value > new[i].value) return 0;
+        if (cur_best[i].value < new[i].value) return 1;
     });
-    INFO("Straight: %s", print_cards_impl(out, NO_CARDS_TABLE));
-    return out;
+    return 2;
 }
 
-Card* check_poker_impl(Card* cards, size_t no_cards) {
-    FOR_ARRAY(no_cards, {
-        if ((cards[i - 1].value == cards[i].value) &&
-            (cards[i - 2].value == cards[i - 1].value) &&
-            (cards[i - 3].value == cards[i - 2].value) &&
-            (i > 2)) return ret_poker_impl(cards, no_cards, i);
+void print_table_impl(void* game) {
+    INFO("");
+    INFO("-----------------------------------------------------------------------------------------------");
+    INFO("");
+    FOR_ARRAY(4, {
+        if (i < ((Game*)game)->num_players) {
+            INFO2("P. %d: %s\t", i, print_cards_impl(((Game*)game)->players[i].cards, NO_CARDS_HAND));
+        } else {
+            INFO2("P. %d: -- -- \t", i);
+        }
     });
-    return NULL;
-}
-
-Card* ret_poker_impl(Card* cards, size_t no_cards, size_t idx) {
-    Card* out = malloc(NO_CARDS_TABLE * sizeof(Card));
-    size_t j = 0;
-    memcpy(&out[j], &cards[idx-3], sizeof(Card));
-    j += 1;
-    memcpy(&out[j], &cards[idx-2], sizeof(Card));
-    j += 1;
-    memcpy(&out[j], &cards[idx-1], sizeof(Card));
-    j += 1;
-    memcpy(&out[j], &cards[idx], sizeof(Card));
-    j += 1;
-    FOR_ARRAY(no_cards, {
-        if ((i != idx - 3) || (i != idx - 2) || (i != idx - 1) || (i != idx)) memcpy(&out[j], &cards[i], sizeof(Card));
-        if (j == 4) break;
-        j += 1;
+    INFO("");
+    FOR_ARRAY(4, {
+        if (i < ((Game*)game)->num_players) {
+            INFO2("SB %d, %d, BB %d\t", ((Game*)game)->players[i].is_sblind,
+                ((Game*)game)->players[i].fiches, ((Game*)game)->players[i].is_bblind);
+        } else {
+            INFO2("----------------\t");
+        }
     });
-    INFO("Poker: %s", print_cards_impl(out, NO_CARDS_TABLE));
-    return out;
-}
-
-Card* check_tris_impl(Card* cards, size_t no_cards) {
-    FOR_ARRAY(no_cards, {
-        if ((cards[i - 1].value == cards[i].value) &&
-            (cards[i - 2].value == cards[i - 1].value) && (i > 1)) return ret_tris_impl(cards, no_cards, i);
+    INFO("");
+    INFO("");
+    size_t no_cards;
+    SET_PHASE(((Game*)game)->phase, no_cards);
+    if (8 < ((Game*)game)->num_players) {
+        INFO2("P. %d: %s\t", 8, print_cards_impl(((Game*)game)->players[8].cards, NO_CARDS_HAND));
+        INFO("\t\t\tTable: %s\t", print_cards_impl(((Game*)game)->table->cards, no_cards));
+        INFO("SB %d, %d, BB %d\t", ((Game*)game)->players[8].is_sblind,
+                ((Game*)game)->players[8].fiches, ((Game*)game)->players[8].is_bblind);
+    } else {
+        INFO2("P. %d: -- -- \t", 8);
+        INFO("\t\t\tTable: %s\t", print_cards_impl(((Game*)game)->table->cards, no_cards));
+        INFO("----------------\t");
+    }
+    INFO("");
+    FOR_ARRAY(4, {
+        if (7 - i < ((Game*)game)->num_players) {
+            INFO2("P. %d: %s\t", 7 - i, print_cards_impl(((Game*)game)->players[7 - i].cards, NO_CARDS_HAND));
+        } else {
+            INFO2("P. %d: -- -- \t", 7 - i);
+        }
     });
-    return NULL;
-}
-
-Card* ret_tris_impl(Card* cards, size_t no_cards, size_t idx) {
-    Card* out = malloc(NO_CARDS_TABLE * sizeof(Card));
-    size_t j = 0;
-    memcpy(&out[j], &cards[idx-2], sizeof(Card));
-    j += 1;
-    memcpy(&out[j], &cards[idx-1], sizeof(Card));
-    j += 1;
-    memcpy(&out[j], &cards[idx], sizeof(Card));
-    j += 1;
-    FOR_ARRAY(no_cards, {
-        if ((i != idx - 2) || (i != idx - 1) || (i != idx)) memcpy(&out[j], &cards[i], sizeof(Card));
-        if (j == 4) break;
-        j += 1;
+    INFO("");
+    FOR_ARRAY(4, {
+        if (7 - i < ((Game*)game)->num_players) {
+            INFO2("SB %d, %d, BB %d\t", ((Game*)game)->players[7 - i].is_sblind,
+                ((Game*)game)->players[7 - i].fiches, ((Game*)game)->players[7 - i].is_bblind);
+        } else {
+            INFO2("----------------\t");
+        }
     });
-    INFO("Tris: %s", print_cards_impl(out, NO_CARDS_TABLE));
-    return out;
-}
-
-Card* check_pair_impl(Card* cards, size_t no_cards) {
-    FOR_ARRAY(no_cards, {
-        if ((cards[i - 1].value == cards[i].value) && (i > 0)) return ret_pair_impl(cards, no_cards, i);
-    });
-    return NULL;
-}
-
-Card* ret_pair_impl(Card* cards, size_t no_cards, size_t idx) {
-    Card* out = malloc(NO_CARDS_TABLE * sizeof(Card));
-    size_t j = 0;
-    memcpy(&out[j], &cards[idx-1], sizeof(Card));
-    j += 1;
-    memcpy(&out[j], &cards[idx], sizeof(Card));
-    j += 1;
-    FOR_ARRAY(no_cards, {
-        if ((i != idx - 1) || (i != idx)) memcpy(&out[j], &cards[i], sizeof(Card));
-        if (j == 4) break;
-        j += 1;
-    });
-    INFO("Pair: %s", print_cards_impl(out, NO_CARDS_TABLE));
-    return out;
-}
-
-Card* check_high_card_impl(Card* cards, size_t no_cards) {
-    Card* out = malloc(NO_CARDS_TABLE * sizeof(Card));
-    FOR_ARRAY(NO_CARDS_TABLE, {
-        memcpy(&out[i], &cards[i], sizeof(Card));
-    });
-    INFO("High Card: %s", print_cards_impl(out, NO_CARDS_TABLE));
-    return out;
+    INFO("");
+    INFO("");
+    INFO("-----------------------------------------------------------------------------------------------");
 }
 
 int main(int argc, char** argv) {
+
+    unsigned int seed;
+    FILE* urandom = fopen("/dev/urandom", "r");
+    fread(&seed, sizeof(int), 1, urandom);
+    fclose(urandom);
+    srand(seed);
 
     Game* holdem = malloc(sizeof(Game));
 
@@ -362,51 +502,25 @@ int main(int argc, char** argv) {
     //     INFO("Shuffled Card: %s %d", print_card_impl(&(holdem->deck->cards[i])), i);
     // });
 
-    FOR_ARRAY(holdem->num_players, {
-        INFO("--------------------");
-        INFO("Player %d: %s", i, print_cards_impl(holdem->players[i].cards, NO_CARDS_HAND));
-        INFO("Player %d: FICHES %d, SB %d, BB %d", i, holdem->players[i].fiches,
-                holdem->players[i].is_sblind, holdem->players[i].is_bblind);
-    });
+    //print_table_impl((void*)holdem);
 
     holdem->flop = &flop_impl;
     holdem->flop((void*)holdem);
 
-    INFO("--------------------");
-    INFO("Table: %s", print_cards_impl(holdem->table->cards, NO_CARDS_FLOP));
-    FOR_ARRAY(holdem->num_players, {
-        INFO("--------------------");
-        INFO("Player %d: %s", i, print_cards_impl(holdem->players[i].cards, NO_CARDS_HAND));
-        INFO("Player %d: FICHES %d, SB %d, BB %d", i, holdem->players[i].fiches,
-                holdem->players[i].is_sblind, holdem->players[i].is_bblind);
-    });
+    //print_table_impl((void*)holdem);
 
     holdem->turn = &turn_impl;
     holdem->turn((void*)holdem);
 
-    INFO("--------------------");
-    INFO("Table: %s", print_cards_impl(holdem->table->cards, NO_CARDS_FLOP + NO_CARDS_TURN));
-    FOR_ARRAY(holdem->num_players, {
-        INFO("--------------------");
-        INFO("Player %d: %s", i, print_cards_impl(holdem->players[i].cards, NO_CARDS_HAND));
-        INFO("Player %d: FICHES %d, SB %d, BB %d", i, holdem->players[i].fiches,
-                holdem->players[i].is_sblind, holdem->players[i].is_bblind);
-    });
+    //print_table_impl((void*)holdem);
 
     holdem->river = &river_impl;
     holdem->river((void*)holdem);
-
-    INFO("--------------------");
-    INFO("Table: %s", print_cards_impl(holdem->table->cards, NO_CARDS_TABLE));
-    FOR_ARRAY(holdem->num_players, {
-        INFO("--------------------");
-        INFO("Player %d: %s", i, print_cards_impl(holdem->players[i].cards, NO_CARDS_HAND));
-        INFO("Player %d: FICHES %d, SB %d, BB %d", i, holdem->players[i].fiches,
-                holdem->players[i].is_sblind, holdem->players[i].is_bblind);
-    });
-
+    
     holdem->check_points = &check_point_impl;
     holdem->check_points((void*)holdem);
+
+    print_table_impl((void*)holdem);
 
     holdem->collect_cards = &collect_cards_impl;
     holdem->collect_cards((void*)holdem);
@@ -414,6 +528,8 @@ int main(int argc, char** argv) {
     // FOR_ARRAY(holdem->deck->dim, {
     //     INFO("Shuffled Card: %s %d", print_card_impl(&(holdem->deck->cards[i])), i);
     // });
+
+    free(holdem);
 
     return 0;
 }
