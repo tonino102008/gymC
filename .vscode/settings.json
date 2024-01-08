@@ -1,7 +1,0 @@
-{
-    "files.associations": {
-        "type_traits": "c",
-        "gymc.h": "c",
-        "cards.h": "c"
-    }
-}
