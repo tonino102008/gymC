@@ -2,5 +2,7 @@ gymC
 cards
 holdem
 linkedlist
+regretmatchingRPS
+regretmatchingRPS2
 .vscode/
 *.o

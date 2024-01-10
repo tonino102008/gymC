@@ -42,17 +42,18 @@ void start_game_impl(void* game) {
     ((Game*)game)->table->bblind = 0;
     ((Game*)game)->table->sblind = 0;
     ((Game*)game)->table->dealer = rand() % NO_PLAYERS;
-    ((Game*)game)->reset_hand = &reset_hand_impl;
-    ((Game*)game)->reset_hand(game);
 }
 
 void reset_hand_impl(void* game) {
     ((Game*)game)->phase = PRE_FLOP;
     FOR_ARRAY(((Game*)game)->num_players, {
-        ((Game*)game)->act_players[i] = i;
+        ((Game*)game)->players[i].cur_bet = 0;
     });
     ((Game*)game)->move_blinds = &move_blinds_impl;
     ((Game*)game)->move_blinds(game);
+    FOR_PLAYER_ARRAY(((Game*)game)->num_players, ((Game*)game)->table->dealer, {
+        ((Game*)game)->act_players[i] = 1;
+    });
     ((Game*)game)->table->plate += (((Game*)game)->table->sblind + ((Game*)game)->table->bblind);
 }
 
@@ -62,13 +63,17 @@ void move_blinds_impl(void* game) {
     ((Game*)game)->table->bblind = NO_BBLIND;
     if (NO_PLAYERS == 2) {
         ((Game*)game)->players[((Game*)game)->table->dealer].is_sblind = 1;
+        ((Game*)game)->players[((Game*)game)->table->dealer].is_bblind = 0;
         ((Game*)game)->players[((Game*)game)->table->dealer].fiches -= ((Game*)game)->table->sblind;
         ((Game*)game)->players[((Game*)game)->table->dealer].cur_bet = ((Game*)game)->table->sblind;
+        ((Game*)game)->players[(((Game*)game)->table->dealer + 1) % NO_PLAYERS].is_sblind = 0;
         ((Game*)game)->players[(((Game*)game)->table->dealer + 1) % NO_PLAYERS].is_bblind = 1;
         ((Game*)game)->players[(((Game*)game)->table->dealer + 1) % NO_PLAYERS].fiches -= ((Game*)game)->table->bblind;
         ((Game*)game)->players[(((Game*)game)->table->dealer + 1) % NO_PLAYERS].cur_bet = ((Game*)game)->table->bblind;
     } else {
+        ((Game*)game)->players[((Game*)game)->table->dealer].is_sblind = 0;
         ((Game*)game)->players[(((Game*)game)->table->dealer + 1) % NO_PLAYERS].is_sblind = 1;
+        ((Game*)game)->players[(((Game*)game)->table->dealer + 1) % NO_PLAYERS].is_bblind = 0;
         ((Game*)game)->players[(((Game*)game)->table->dealer + 1) % NO_PLAYERS].fiches -= ((Game*)game)->table->sblind;
         ((Game*)game)->players[(((Game*)game)->table->dealer + 1) % NO_PLAYERS].cur_bet = ((Game*)game)->table->sblind;
         ((Game*)game)->players[(((Game*)game)->table->dealer + 2) % NO_PLAYERS].is_bblind = 1;
@@ -80,7 +85,7 @@ void move_blinds_impl(void* game) {
 void deal_cards_impl(void* game) {
     ((Game*)game)->deck->deck_shuffle = &deck_shuffle_impl;
     ((Game*)game)->deck->deck_shuffle((void*)(((Game*)game)->deck));
-    FOR_ARRAY(((Game*)game)->num_players, {
+    FOR_PLAYER_ARRAY(((Game*)game)->num_players, ((Game*)game)->table->dealer, {
         ((Game*)game)->deck->dim  -= NO_CARDS_HAND;
         memcpy(((Game*)game)->players[i].cards, &((Game*)game)->deck->cards[((Game*)game)->deck->dim], 
                 NO_CARDS_HAND * sizeof(Card));
@@ -97,120 +102,129 @@ void check_point_impl(void* game) {
     winners->idx = malloc(1 * sizeof(size_t));
     winners->value = HIGH_CARD;
     Card* all = malloc(sizeof(Card) * (NO_CARDS_TABLE + NO_CARDS_HAND));
-    FOR_ARRAY(((Game*)game)->num_players, {
-        // THE CYCLE DEPENDS FROM THE DEALER POSITION
-        // THE PLAYER BET HAS TO BE SET IN PLAYER STRUCT
-        // WE SHOULD CYCLE ONLY ON ACTIVE PLAYERS
-        memcpy(all, ((Game*)game)->table->cards, sizeof(Card) * NO_CARDS_TABLE);
-        memcpy(&all[NO_CARDS_TABLE], ((Game*)game)->players[i].cards, sizeof(Card) * NO_CARDS_HAND);
-        qsort(all, NO_CARDS_TABLE + NO_CARDS_HAND, sizeof(Card), sort_cards_value_impl);
+    FOR_PLAYER_ARRAY(((Game*)game)->num_players, ((Game*)game)->table->dealer, {
+        if (((Game*)game)->act_players[i]) {
+            memcpy(all, ((Game*)game)->table->cards, sizeof(Card) * NO_CARDS_TABLE);
+            memcpy(&all[NO_CARDS_TABLE], ((Game*)game)->players[i].cards, sizeof(Card) * NO_CARDS_HAND);
+            qsort(all, NO_CARDS_TABLE + NO_CARDS_HAND, sizeof(Card), sort_cards_value_impl);
 
-        Counter* count = malloc((ACE + 1) * sizeof(Counter));
-        Counter* count_s = malloc((SPADES + 1) * sizeof(Counter));
-        FOR_ARRAY(ACE + 1, {
-            count[i].dim = 0;
-            count[i].idx = malloc(1 * sizeof(size_t));
-            count[i].value = i;
-        });
-        FOR_ARRAY(SPADES + 1, {
-            count_s[i].dim = 0;
-            count_s[i].idx = malloc(1 * sizeof(size_t));
-            count_s[i].value = i;
-        });
-        FOR_ARRAY(NO_CARDS_TABLE + NO_CARDS_HAND, {
-            count[all[i].value].dim += 1;
-            count[all[i].value].idx = realloc(count[all[i].value].idx, count[all[i].value].dim * sizeof(size_t));
-            count[all[i].value].idx[count[all[i].value].dim - 1] = i;
+            Counter* count = malloc((ACE + 1) * sizeof(Counter));
+            Counter* count_s = malloc((SPADES + 1) * sizeof(Counter));
+            FOR_ARRAY(ACE + 1, {
+                count[i].dim = 0;
+                count[i].idx = malloc(1 * sizeof(size_t));
+                count[i].value = i;
+            });
+            FOR_ARRAY(SPADES + 1, {
+                count_s[i].dim = 0;
+                count_s[i].idx = malloc(1 * sizeof(size_t));
+                count_s[i].value = i;
+            });
+            FOR_ARRAY(NO_CARDS_TABLE + NO_CARDS_HAND, {
+                count[all[i].value].dim += 1;
+                count[all[i].value].idx = realloc(count[all[i].value].idx, count[all[i].value].dim * sizeof(size_t));
+                count[all[i].value].idx[count[all[i].value].dim - 1] = i;
 
-            count_s[all[i].suit].dim += 1;
-            count_s[all[i].suit].idx = realloc(count_s[all[i].suit].idx, count_s[all[i].suit].dim * sizeof(size_t));
-            count_s[all[i].suit].idx[count_s[all[i].suit].dim - 1] = i;
-        });
-        qsort(count, ACE + 1, sizeof(Counter), sort_counter_impl);
-        qsort(count_s, SPADES + 1, sizeof(Counter), sort_counter_impl);
-        ((Game*)game)->players[i].best_hand = check_counter_impl(&((Game*)game)->players[i], count, count_s, all);
-        FOR_ARRAY(SPADES + 1, {
-            free(count_s[i].idx);
-        });
-        FOR_ARRAY(ACE + 1, {
-            free(count[i].idx);
-        });
-        free(count_s);
-        free(count);
+                count_s[all[i].suit].dim += 1;
+                count_s[all[i].suit].idx = realloc(count_s[all[i].suit].idx, count_s[all[i].suit].dim * sizeof(size_t));
+                count_s[all[i].suit].idx[count_s[all[i].suit].dim - 1] = i;
+            });
+            qsort(count, ACE + 1, sizeof(Counter), sort_counter_impl);
+            qsort(count_s, SPADES + 1, sizeof(Counter), sort_counter_impl);
+            ((Game*)game)->players[i].best_hand = check_counter_impl(&((Game*)game)->players[i], count, count_s, all);
+            FOR_ARRAY(SPADES + 1, {
+                free(count_s[i].idx);
+            });
+            FOR_ARRAY(ACE + 1, {
+                free(count[i].idx);
+            });
+            free(count_s);
+            free(count);
 
-        if (((Game*)game)->players[i].point == winners->value) {
-            if (winners->dim > 0) {
-                size_t best = compare_best_hands_impl(((Game*)game)->players[winners->idx[0]].best_hand,
-                            ((Game*)game)->players[i].best_hand);
-                switch (best)
-                {
-                    case 0:
-                        break;
-                    
-                    case 1:
-                        winners->dim = 1;
-                        winners->idx = realloc(winners->idx, winners->dim * sizeof(size_t));
-                        winners->idx[winners->dim - 1] = i;
-                        winners->value = ((Game*)game)->players[i].point;
-                        break;
+            if (((Game*)game)->players[i].point == winners->value) {
+                if (winners->dim > 0) {
+                    size_t best = compare_best_hands_impl(((Game*)game)->players[winners->idx[0]].best_hand,
+                                ((Game*)game)->players[i].best_hand);
+                    switch (best)
+                    {
+                        case 0:
+                            break;
+                        
+                        case 1:
+                            winners->dim = 1;
+                            winners->idx = realloc(winners->idx, winners->dim * sizeof(size_t));
+                            winners->idx[winners->dim - 1] = i;
+                            winners->value = ((Game*)game)->players[i].point;
+                            break;
 
-                    case 2:
-                        winners->dim += 1;
-                        winners->idx = realloc(winners->idx, winners->dim * sizeof(size_t));
-                        winners->idx[winners->dim - 1] = i;
-                        winners->value = ((Game*)game)->players[i].point;
-                        break;
+                        case 2:
+                            winners->dim += 1;
+                            winners->idx = realloc(winners->idx, winners->dim * sizeof(size_t));
+                            winners->idx[winners->dim - 1] = i;
+                            winners->value = ((Game*)game)->players[i].point;
+                            break;
+                    }
+                } else {
+                    winners->dim = 1;
+                    winners->idx = realloc(winners->idx, winners->dim * sizeof(size_t));
+                    winners->idx[winners->dim - 1] = i;
+                    winners->value = ((Game*)game)->players[i].point;
                 }
-            } else {
+            }
+            if (((Game*)game)->players[i].point > winners->value) {
                 winners->dim = 1;
                 winners->idx = realloc(winners->idx, winners->dim * sizeof(size_t));
                 winners->idx[winners->dim - 1] = i;
                 winners->value = ((Game*)game)->players[i].point;
             }
         }
-        if (((Game*)game)->players[i].point > winners->value) {
-            winners->dim = 1;
-            winners->idx = realloc(winners->idx, winners->dim * sizeof(size_t));
-            winners->idx[winners->dim - 1] = i;
-            winners->value = ((Game*)game)->players[i].point;
-        }
 
     });
     FOR_ARRAY(winners->dim, {
         ((Game*)game)->players[winners->idx[i]].fiches += (((Game*)game)->table->plate / (winners->dim));
     });
+    ((Game*)game)->table->plate = 0;
     free(winners);
 }
 
 void bet_round_impl(void* game) {
     size_t max_cur_bet = ((Game*)game)->table->bblind;
     size_t is_raise = 1;
+    size_t dealer = ((Game*)game)->table->dealer;
+    if (((Game*)game)->phase == PRE_FLOP) dealer += 2;
     while (is_raise) {
         is_raise = 0;
-        FOR_ARRAY(((Game*)game)->num_players, {
-            // THE CYCLE DEPENDS FROM THE DEALER POSITION
+        FOR_PLAYER_ARRAY(((Game*)game)->num_players, dealer, {
             // THE PLAYER BET HAS TO BE SET IN PLAYER STRUCT
-            // WE SHOULD CYCLE ONLY ON ACTIVE PLAYERS
-
             // ALL THE BETS SHOULD BE COLLECTED IN TABLE->PLATE
-            switch (((Game*)game)->players[i].bet)
-            {
-            case FOLD_CHECK:
-                if (((Game*)game)->players[i].cur_bet < ((Game*)game)->table->bblind) {
-                    // FOLD - REMOVE PLAYER FROM ACT_PLAYERS
+            if (((Game*)game)->act_players[i]) {
+                switch (((Game*)game)->players[i].bet)
+                {
+                case FOLD_CHECK:
+                    if (((Game*)game)->players[i].is_sblind && ((Game*)game)->players[i].cur_bet < ((Game*)game)->table->bblind) {
+                        ((Game*)game)->players[i].cur_bet += NO_SBLIND;
+                        ((Game*)game)->players[i].fiches -= NO_SBLIND;
+                        ((Game*)game)->table->plate += NO_SBLIND;
+                    }
+                    if (((Game*)game)->players[i].cur_bet < ((Game*)game)->table->bblind) {
+                        // FOLD - REMOVE PLAYER FROM ACT_PLAYERS
+                        ((Game*)game)->act_players[i] = 0;
+                        break;
+                    }
+                    break;
+                
+                case CALL:
+                    ((Game*)game)->players[i].cur_bet += (max_cur_bet - ((Game*)game)->players[i].cur_bet);
+                    ((Game*)game)->players[i].fiches -= (max_cur_bet - ((Game*)game)->players[i].cur_bet);
+                    ((Game*)game)->table->plate += (max_cur_bet - ((Game*)game)->players[i].cur_bet);
+                    break;
+
+                case RAISE:
+                    is_raise = 1;
+                    ((Game*)game)->players[i].cur_bet += ((Game*)game)->players[i].cur_bet; // FAKE RAISE LOGIC -> TBD IN PLAYER STRUCT
+                    max_cur_bet = ((Game*)game)->players[i].cur_bet;
                     break;
                 }
-                break;
-            
-            case CALL: // FAKE CALL LOGIC -> TBD IN PLAYER STRUCT
-                ((Game*)game)->players[i].cur_bet += (max_cur_bet - ((Game*)game)->players[i].cur_bet);
-                break;
-
-            case RAISE:
-                is_raise = 1;
-                ((Game*)game)->players[i].cur_bet *= 2; // FAKE RAISE LOGIC -> TBD IN PLAYER STRUCT
-                max_cur_bet = ((Game*)game)->players[i].cur_bet;
-                break;
             }
         });
     }
@@ -250,7 +264,7 @@ void river_impl(void* game) {
 }
 
 void collect_cards_impl(void* game) {
-    FOR_ARRAY(((Game*)game)->num_players, {
+    FOR_PLAYER_ARRAY(((Game*)game)->num_players, ((Game*)game)->table->dealer, {
         ((Game*)game)->deck->dim  += NO_CARDS_HAND;
         ((Game*)game)->deck->cards = realloc(((Game*)game)->deck->cards,
                 (((Game*)game)->deck->dim + 1) * sizeof(Card));
@@ -282,6 +296,7 @@ void collect_cards_impl(void* game) {
                 &((Game*)game)->table->cards[NO_CARDS_FLOP + NO_CARDS_TURN], 
                 NO_CARDS_RIVER * sizeof(Card));
     }
+    // DELETE PLAYER IF FICHES < 0
 }
 
 size_t check_flush_straight_impl(Counter* count, Card* all, Card* straight) {
@@ -427,6 +442,7 @@ size_t compare_best_hands_impl(Card* cur_best, Card* new) {
 }
 
 void print_table_impl(void* game) {
+    if (((Game*)game)->phase != PRE_FLOP) printf("\033[14A\n");
     INFO("");
     INFO("-----------------------------------------------------------------------------------------------");
     INFO("");
@@ -493,41 +509,43 @@ int main(int argc, char** argv) {
     Game* holdem = malloc(sizeof(Game));
 
     holdem->start_game = &start_game_impl;
+    holdem->reset_hand = &reset_hand_impl;
+    holdem->deal_cards = &deal_cards_impl;
+    holdem->flop = &flop_impl;
+    holdem->turn = &turn_impl;
+    holdem->river = &river_impl;
+    holdem->check_points = &check_point_impl;
+    holdem->collect_cards = &collect_cards_impl;
     holdem->start_game((void*)holdem);
 
-    holdem->deal_cards = &deal_cards_impl;
-    holdem->deal_cards((void*)holdem);
+    unsigned int sleep_time = 10000;
 
-    // FOR_ARRAY(holdem->deck->dim, {
-    //     INFO("Shuffled Card: %s %d", print_card_impl(&(holdem->deck->cards[i])), i);
-    // });
+    FOR_ARRAY(1, {
 
-    //print_table_impl((void*)holdem);
+        holdem->reset_hand((void*)holdem);
+        holdem->deal_cards((void*)holdem);
+        print_table_impl((void*)holdem);
+        usleep(sleep_time);
+        //getchar();
+        holdem->flop((void*)holdem);
+        print_table_impl((void*)holdem);
+        usleep(sleep_time);
+        //getchar();
+        holdem->turn((void*)holdem);
+        print_table_impl((void*)holdem);
+        usleep(sleep_time);
+        //getchar();
+        holdem->river((void*)holdem);
+        print_table_impl((void*)holdem);
+        usleep(sleep_time);
+        //getchar();
+        holdem->check_points((void*)holdem);
+        print_table_impl((void*)holdem);
+        usleep(sleep_time);
+        //getchar();
+        holdem->collect_cards((void*)holdem);
 
-    holdem->flop = &flop_impl;
-    holdem->flop((void*)holdem);
-
-    //print_table_impl((void*)holdem);
-
-    holdem->turn = &turn_impl;
-    holdem->turn((void*)holdem);
-
-    //print_table_impl((void*)holdem);
-
-    holdem->river = &river_impl;
-    holdem->river((void*)holdem);
-    
-    holdem->check_points = &check_point_impl;
-    holdem->check_points((void*)holdem);
-
-    print_table_impl((void*)holdem);
-
-    holdem->collect_cards = &collect_cards_impl;
-    holdem->collect_cards((void*)holdem);
-
-    // FOR_ARRAY(holdem->deck->dim, {
-    //     INFO("Shuffled Card: %s %d", print_card_impl(&(holdem->deck->cards[i])), i);
-    // });
+    });
 
     free(holdem);
 

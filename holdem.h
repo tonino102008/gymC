@@ -34,6 +34,14 @@
                 break;                                  \
             }})
 
+#define FOR_PLAYER_ARRAY(dim, dealer, body)                 \
+        do {                                                \
+            for (size_t l = 0; l < dim; l++) {              \
+                size_t i = (dealer + l + 1) % (NO_PLAYERS); \
+                body;                                       \
+            }                                               \
+        } while(0)
+
 typedef enum {
     PRE_FLOP,
     FLOP,
