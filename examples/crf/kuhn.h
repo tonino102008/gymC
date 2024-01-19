@@ -9,6 +9,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include "../../treemap.h"
+
 #define NUM_PLAYERS 2
 #define NUM_CARDS 3
 
@@ -22,14 +24,12 @@ typedef enum {
 } Action;
 
 struct InfoSet {
-    char* infoset;
     double* strategy;
     double* strategy_avg;
     double* strategy_sum;
     double* regret_sum;
-    void (*getStrategy)(struct InfoSet*);
-    void (*getAvgStrategy)(struct InfoSet*);
-    char* (*toString)(struct InfoSet*);
+    void (*_getStrategy)(struct InfoSet*, double);
+    void (*_getAvgStrategy)(struct InfoSet*);
 };
 
 struct Trainer {
@@ -37,18 +37,22 @@ struct Trainer {
     int* cards;
     char* history;
     size_t lenH;
-    void (*train)(struct Trainer*);
-    double (*cfr)(struct Trainer*, double, double);
+    TreeMap* tree;
+    void (*_train)(struct Trainer*);
+    double (*_cfr)(struct Trainer*, char*, double, double);
 };
+
+InfoSet* ctorInfoSet();
+void dtorInfoSet(InfoSet*);
 
 void printTreeNode(void*, void*);
 int compareTreeNode(void*, void*);
 
-void getStrategy(InfoSet*);
+void getStrategy(InfoSet*, double);
 void getAvgStrategy(InfoSet*);
-char* toString(InfoSet*);
+char* toString(char*, InfoSet*);
 
 void train(Trainer*);
-double cfr(Trainer*, double, double);
+double cfr(Trainer*, char*, double, double);
 
 #endif // KUHN_H_

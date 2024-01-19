@@ -22,35 +22,50 @@ struct TreeNode {
 };
 
 struct TreeMap {
-    size_t n_elem;
+    ssize_t n_elem;
     TreeNode* head;
 };
 
+TreeMap* createEmptyTreeMap();
 TreeMap* createTreeMap(TreeNode*);
+TreeNode* ctorTreeNode(void*, void*);
+void dtorTreeNode(TreeNode*);
 void insertTreeNode(TreeMap*, TreeNode*, int(*compare_fun)(void*, void*));
 void deleteTreeNode(TreeMap*, TreeNode*, int(*compare_fun)(void*, void*));
 void travelTreeMap(TreeNode*, void(*generic_fun)(void*, void*));
+TreeNode* findTreeNode(TreeNode*, void*, int(*compare_fun)(void*, void*));
 void deleteTreeMap(TreeMap*);
-void deleteRoutine(TreeNode*, size_t*);
+void deleteRoutine(TreeNode*);
 
 #endif // TREEMAP_H_
 
 #ifdef TREEMAP_IMPLEMENTATION
 
+TreeMap* createEmptyTreeMap() {
+    TreeMap* tree = malloc(sizeof(TreeMap));
+    tree->head = NULL;
+    tree->n_elem = -1;
+    return tree;
+}
+
 TreeMap* createTreeMap(TreeNode* head) {
     TreeMap* tree = malloc(sizeof(TreeMap));
     assert(head->right == NULL);
     assert(head->left == NULL);
-    tree->head = malloc(sizeof(TreeNode));
     tree->head = head;
     tree->n_elem = 0;
     return tree;
 }
 
 void insertTreeNode(TreeMap* tree, TreeNode* node, int(*compare_fun)(void* key1, void* key2)) {
-    TreeNode* head = tree->head;
     assert(node->right == NULL);
     assert(node->left == NULL);
+    if (!tree->head) {
+        tree->head = node;
+        tree->n_elem += 1;
+        return;
+    }
+    TreeNode* head = tree->head;
     while (head->right || head->left) {
         int comp = compare_fun(node->key, head->key);
         if (comp == 0) return;
@@ -94,9 +109,7 @@ void deleteTreeNode(TreeMap* tree, TreeNode* node, int(*compare_fun)(void* key1,
         }
         tmp->right = right;
     }
-    free(head->key);
-    free(head->value);
-    free(head);
+    dtorTreeNode(head);
     tree->n_elem -= 1;
 }
 
@@ -108,23 +121,38 @@ void travelTreeMap(TreeNode* head, void(*generic_fun)(void* key, void* value)) {
     if (head->right) travelTreeMap(head->right, generic_fun);
 }
 
+TreeNode* findTreeNode(TreeNode* head, void* keyF, int(*compare_fun)(void*, void*)) {
+
+    if (!head) return NULL;
+    
+    TreeNode* out = NULL;
+    TreeNode* tmp = NULL;
+    
+    if (head->left) tmp = findTreeNode(head->left, keyF, compare_fun);
+    if (tmp) return tmp;
+    if (head->right) tmp = findTreeNode(head->right, keyF, compare_fun);
+    if (tmp) return tmp;
+
+    if (compare_fun(keyF, head->key) == 0) out = head;
+    return out;
+
+}
+
 void deleteTreeMap(TreeMap* tree) {
     
-    deleteRoutine(tree->head, &(tree->n_elem));
+    deleteRoutine(tree->head);
 
     free(tree);
     tree = NULL;
     
 }
 
-void deleteRoutine(TreeNode* head, size_t* counter) {
+void deleteRoutine(TreeNode* head) {
 
-    if (head->left) deleteRoutine(head->left, counter);
-    if (head->right) deleteRoutine(head->right, counter);
+    if (head->left) deleteRoutine(head->left);
+    if (head->right) deleteRoutine(head->right);
     
-    free(head->key);
-    free(head->value);
-    free(head);
+    dtorTreeNode(head);
 
 }
 

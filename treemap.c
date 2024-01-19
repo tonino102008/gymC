@@ -1,6 +1,20 @@
 #define TREEMAP_IMPLEMENTATION
 #include "./treemap.h"
 
+TreeNode* ctorTreeNode(void* key, void* value) {
+    TreeNode* out = malloc(sizeof(TreeNode));
+    out->key = key; // SHOULD CALL APPROPRIATE CTOR FOR VOID* TYPE ELEMENT
+    out->value = value; // SHOULD CALL APPROPRIATE CTOR FOR VOID* TYPE ELEMENT
+    out->left = NULL;
+    out->right = NULL;
+}
+
+void dtorTreeNode(TreeNode* node) {
+    free(node->key); // SHOULD CALL APPROPRIATE DTOR FOR VOID* TYPE ELEMENT
+    free(node->value); // SHOULD CALL APPROPRIATE DTOR FOR VOID* TYPE ELEMENT
+    free(node);
+}
+
 void printTreeNode(void* key, void* value) {
     assert(key);
     assert(value);
@@ -31,7 +45,9 @@ int main(int argc, char** argv) {
     *((int*)head->value) = start;
     head->left = NULL;
     head->right = NULL;
-    TreeMap* tree = createTreeMap(head);
+
+    TreeMap* tree = createEmptyTreeMap();
+    insertTreeNode(tree, head, &compareTreeNode);
 
     int i = 0;
 
@@ -52,7 +68,15 @@ int main(int argc, char** argv) {
 
     printf("\nTree elements: %zu\n\n", tree->n_elem);
 
+    assert(tree->head->left->right);
     deleteTreeNode(tree, tree->head->left->right, &compareTreeNode);
+
+    char keyF[2] = "4\0";
+    TreeNode* find = findTreeNode(tree->head, (void*)(&keyF), &compareTreeNode);
+    assert(find);
+
+    printTreeNode(find->key, find->value);
+    printf("\n");
 
     travelTreeMap(tree->head, &printTreeNode);
     
